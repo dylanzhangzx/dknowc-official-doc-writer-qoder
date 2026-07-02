@@ -1,0 +1,14 @@
+# 深知可信搜索 API 配置文件
+#
+# 获取 API Key：
+# 1. 访问深知平台注册入口（暂沿用 ClawHub Public 版本）：
+#    https://platform.dknowc.cn/auth/#/register?channel=2787E171-B0E5-4328-9946-47AC52434D1F&type=6
+# 2. 注册并登录深知平台
+# 3. 获取深知可信搜索 API Key
+# 4. 将本文件复制为 config.ini
+# 5. 把 your_api_key_here 替换为实际 API Key
+#
+# 搜索接口固定使用：https://open.dknowc.cn/dependable/search/
+
+[dkag]
+api_key=your_api_key_here

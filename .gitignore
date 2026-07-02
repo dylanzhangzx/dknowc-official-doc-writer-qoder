@@ -1,0 +1,10 @@
+config.ini
+config/user_profile.json
+official-docs/input/*
+official-docs/output/*
+official-docs/search-results/*
+!official-docs/input/.gitkeep
+!official-docs/search-results/.gitkeep
+__pycache__/
+*.pyc
+.DS_Store
