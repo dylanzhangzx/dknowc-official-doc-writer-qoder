@@ -97,5 +97,5 @@ python3 scripts/merge_search_results.py result_gd.json result_bj.json --output m
 - 如搜索失败或提示 API Key 未配置，请先检查 `config.ini` 是否存在且 `api_key` 是否有效。
 - TODO：正式 Qoder 渠道注册链接确定后，将当前暂用的 ClawHub Public 注册链接替换为该链接。
 - Qoder 社区发布方式：Fork `Qoder-AI/qoder-community`，在 `src/content/skills-zh/dknowc-official-doc-writer.md` 新增 Agent Skill 条目，按社区贡献指南提交 Pull Request。
-- 本渠道已在 `../community/skills-zh/dknowc-official-doc-writer.md` 准备中文社区条目草稿。
-- TODO：提交 Qoder 社区 PR 前，替换社区条目中的 `githubUrl`、`docsUrl` 和 `installCommand` 占位符为正式公开仓库地址。
+- 本渠道已在 `../community/skills-zh/dknowc-official-doc-writer.md` 准备中文社区条目，并使用 `https://github.com/dylanzhangzx/dknowc-official-doc-writer-qoder` 作为公开安装源。
+- TODO：提交 Qoder 社区 PR 前，在 fork 后的 `qoder-community` 仓库执行 `npm run build`。
