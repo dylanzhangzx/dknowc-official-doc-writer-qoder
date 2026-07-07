@@ -1,6 +1,6 @@
 # 深知写作助手（Qoder Public 版）
 
-这是深知写作助手的 Qoder 分发版本，以 ClawHub Public `3.0.25` 为功能基准，但独立维护和打包。本版本不内置深知搜索 API Key；首次使用前需要用户自行通过 Qoder 渠道注册链接获取并配置 API Key。
+这是深知写作助手的 Qoder 分发版本，以 ClawHub Public `3.1.0` 为功能基准，但作为独立渠道维护和打包。本版本不内置深知搜索 API Key；首次调用本 Skill 时，无论当前任务是否需要搜索，都先由 Agent 通过 MaaS 注册接口完成手机号注册、验证码确认、API Key 获取和本地配置写入，用户只需提供手机号和收到的验证码。
 
 ## Qoder 安装
 
@@ -27,22 +27,44 @@
 pip3 install python-docx requests
 ```
 
-## 配置深知搜索 API Key
+还需要 Node.js 18+ 用于调用 MaaS 注册接口：
 
-1. 访问深知平台注册入口（暂沿用 ClawHub Public 版本）：
+```bash
+node --version
+```
+
+## 首次启动初始化
+
+Qoder Public 版的初始化与具体任务无关：只要调用本 Skill 且本地没有 `config.ini`，Agent 就应先引导用户完成注册配置，然后再继续处理原任务。简单通知、改写润色、只生成 Word 等场景也遵循该规则。
+
+## 注册并配置深知搜索 API Key
+
+Qoder Public 版默认使用：
+
+- 接入点 `type=6`，即深知可信搜索。
+- 渠道码 `2787E171-B0E5-4328-9946-47AC52434D1F`。
+- 本地 `config.ini` 保存搜索 Key，由 Agent 自动创建，公开包不携带该文件。
+
+第 1 步，发送短信验证码：
+
+```bash
+node scripts/register.mjs send --phone 13812345678
+```
+
+返回 `status=true` 后，暂停并请用户提供收到的 6 位验证码。
+
+第 2 步，注册并获取 API Key：
+
+```bash
+node scripts/register.mjs register --phone 13812345678 --vcode 123456 --organ 个人 --name 用户
+```
+
+成功后，脚本会把 API Key 自动写入本 Skill 根目录下的 `config.ini`，不会在标准输出中返回完整 Key。用户不需要手动复制 Key，也不需要手动编辑配置文件。
+
+如自动注册链路失败，可降级使用 Qoder Public 版当前注册链接手动注册：
 
 ```text
 https://platform.dknowc.cn/auth/#/register?channel=2787E171-B0E5-4328-9946-47AC52434D1F&type=6
-```
-
-2. 注册并登录深知平台
-3. 获取深知可信搜索 API Key
-4. 将 `config.ini.example` 复制为 `config.ini`
-5. 填入你的 API Key：
-
-```ini
-[dkag]
-api_key=your_api_key_here
 ```
 
 搜索接口固定为：
@@ -51,18 +73,19 @@ api_key=your_api_key_here
 https://open.dknowc.cn/dependable/search/
 ```
 
-不要把包含真实 API Key 的 `config.ini` 上传或公开分享。
+`config.ini` 只存在于用户本地安装后的 Skill 目录中，不得上传、打包或公开分享。发布包检查会阻止该文件进入公开包。
 
 ## 版本说明
 
-当前 Qoder Public 版版本为 `3.0.25`，功能和内容基准为 ClawHub Public `3.0.25`。
+当前 Qoder Public 版版本为 `3.1.0`，功能和内容基准为 ClawHub Public `3.1.0`。
 
 ## 常用测试
 
 语法检查：
 
 ```bash
-python3 -m py_compile scripts/dkag_search.py scripts/merge_search_results.py scripts/format_document.py scripts/template_generator.py
+python3 -m py_compile scripts/dkag_search.py scripts/merge_search_results.py scripts/format_document.py scripts/template_generator.py scripts/initialize.py scripts/check_release.py
+node --check scripts/register.mjs
 ```
 
 普通 Word 生成：
@@ -92,10 +115,10 @@ python3 scripts/merge_search_results.py result_gd.json result_bj.json --output m
 ## Public 版说明与社区提交待办
 
 - 本版本不内置 API Key。
-- 用户通过 Qoder 渠道注册链接获取 API Key。
+- 用户可通过 Agent 调用 `scripts/register.mjs`，用手机号和验证码注册 MaaS 账号并获取深知可信搜索 API Key。
+- 注册成功后，Agent 自动把 API Key 写入本地 `config.ini`，用户不需要查看或手动配置 Key。
 - 深知搜索、素材分类、Word 生成、异常处理等功能逻辑与自用版一致。
-- 如搜索失败或提示 API Key 未配置，请先检查 `config.ini` 是否存在且 `api_key` 是否有效。
-- TODO：正式 Qoder 渠道注册链接确定后，将当前暂用的 ClawHub Public 注册链接替换为该链接。
+- 如搜索失败或提示 API Key 未配置，请重新执行注册流程或检查本地 `config.ini` 是否存在且有效。
+- TODO：正式 Qoder 专属渠道码或注册链接确定后，将当前沿用的原渠道码注册链接替换为 Qoder 专属链接。
 - Qoder 社区发布方式：Fork `Qoder-AI/qoder-community`，在 `src/content/skills-zh/dknowc-official-doc-writer.md` 新增 Agent Skill 条目，按社区贡献指南提交 Pull Request。
 - 本渠道已在 `../community/skills-zh/dknowc-official-doc-writer.md` 准备中文社区条目，并使用 `https://github.com/dylanzhangzx/dknowc-official-doc-writer-qoder` 作为公开安装源。
-- TODO：提交 Qoder 社区 PR 前，在 fork 后的 `qoder-community` 仓库执行 `npm run build`。

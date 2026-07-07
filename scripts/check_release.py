@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""阻止客户信息、API Key、其他渠道标识和本地生成物进入 Qoder 公开包。"""
+"""阻止客户信息、API Key 和本地生成物进入 Qoder 公开包。"""
 
 import re
 from pathlib import Path

@@ -559,6 +559,14 @@ def infer_title_from_output_path(output_path):
     return stem
 
 
+def is_standalone_source_note(output_path):
+    """判断当前输出是否为独立的素材来源说明文档。"""
+    if not output_path:
+        return False
+    stem = Path(os.path.expanduser(output_path)).stem.strip()
+    return bool(re.search(r'_素材来源说明(?:_v\d+)?$', stem, re.IGNORECASE))
+
+
 def extract_document_title(lines):
     """从正文行中提取公文标题，用于默认输出文件名。"""
     for line in lines:
@@ -1029,6 +1037,8 @@ def create_document(content_text, output_path=None):
     h3_font, h3_size, h3_bold = get_font_config('heading3')
     body_line_spacing = FORMAT_CONFIG['body']['line_spacing_pt'] if FORMAT_CONFIG else 28
     
+    # 独立素材说明不是正文附录，保留专用排版但不在首个栏目之前分页。
+    standalone_source_note = is_standalone_source_note(output_path)
     # 附录区域标志：素材使用情况、参考来源和知识专库链接统一靠左排版
     in_appendix_section = False
     # 知识专库链接区域标志：URL 生成可点击蓝链
@@ -1093,7 +1103,8 @@ def create_document(content_text, output_path=None):
 
         marker_text = strip_markdown_heading(stripped)
         if marker_text in ("素材使用情况", "参考资料", "参考来源"):
-            add_page_break_if_needed(doc, body_line_spacing)
+            if not standalone_source_note:
+                add_page_break_if_needed(doc, body_line_spacing)
             in_appendix_section = True
             para = doc.add_paragraph()
             label = "【素材使用情况】" if marker_text == "素材使用情况" else f"【{marker_text}】"
@@ -1103,7 +1114,7 @@ def create_document(content_text, output_path=None):
             continue
 
         if marker_text == "知识专库链接":
-            if not in_appendix_section:
+            if not in_appendix_section and not standalone_source_note:
                 add_page_break_if_needed(doc, body_line_spacing)
             in_appendix_section = True
             in_kb_section = True
@@ -1121,13 +1132,13 @@ def create_document(content_text, output_path=None):
             or re.match(r'^【参考来源】', stripped)
             or stripped in ("素材使用情况", "参考资料", "参考来源")
         ):
-            if not in_appendix_section:
+            if not in_appendix_section and not standalone_source_note:
                 add_page_break_if_needed(doc, body_line_spacing)
             in_appendix_section = True
 
         # 检测【知识专库链接】区域开始
         if re.match(r'^【知识专库链接】', stripped):
-            if not in_appendix_section:
+            if not in_appendix_section and not standalone_source_note:
                 add_page_break_if_needed(doc, body_line_spacing)
             in_appendix_section = True
             in_kb_section = True
