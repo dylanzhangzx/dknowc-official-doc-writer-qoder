@@ -36,12 +36,12 @@ node scripts/register.mjs send --phone <手机号>
 node scripts/register.mjs register --phone <手机号> --vcode <验证码> --organ 个人 --name 用户
 ```
 
-脚本默认固定 `type=6`（深知可信搜索），并自动使用 Qoder Public 版当前渠道码 `2787E171-B0E5-4328-9946-47AC52434D1F`。注册成功后，脚本会自动将 API Key 写入本 Skill 根目录下的 `config.ini`，标准输出不返回完整 Key。不得向用户索要、展示或要求用户手动复制 API Key。配置写入成功后，继续处理用户原任务。
+脚本默认固定 `type=6`（深知可信搜索），并自动使用 Qoder Public 专属渠道码 `5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18`。注册成功后，脚本会自动将 API Key 写入本 Skill 根目录下的 `config.ini`，标准输出不返回完整 Key。不得向用户索要、展示或要求用户手动复制 API Key。配置写入成功后，继续处理用户原任务。
 
 如接口失败、短信发送受限、验证码错误、手机号已注册或用户不希望自动注册，暂停原任务并给出 Qoder Public 版当前注册链接作为降级方案：
 
 ```text
-https://platform.dknowc.cn/auth/#/register?channel=2787E171-B0E5-4328-9946-47AC52434D1F&type=6
+https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18&type=6
 ```
 
 ## 工作原则

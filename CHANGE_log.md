@@ -6,7 +6,7 @@
 
 - 同步 ClawHub Public `3.1.0` 的产品功能、素材溯源和内容质量规则。
 - 新增 Qoder Public 版自动注册流程：通过 `scripts/register.mjs` 完成短信验证码注册、获取 API Key 并自动写入本地 `config.ini`。
-- Qoder Public 版继续使用原渠道码 `2787E171-B0E5-4328-9946-47AC52434D1F`；待 Qoder 专属渠道码或注册链接确认后再替换。
+- Qoder Public 版使用专属渠道码 `5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18`。
 
 ### 公文交付与内容质量优化
 

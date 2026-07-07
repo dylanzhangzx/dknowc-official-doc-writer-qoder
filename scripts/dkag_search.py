@@ -34,7 +34,7 @@ CONFIG_FILE = SKILL_ROOT / "config.ini"
 DEFAULT_BASE_URL = "https://open.dknowc.cn/dependable/search/"
 SEARCH_RESULTS_DIR = SKILL_ROOT / "official-docs" / "search-results"
 CONFIG_HELP_URL = "https://platform.dknowc.cn/"
-REGISTER_URL = "https://platform.dknowc.cn/auth/#/register?channel=2787E171-B0E5-4328-9946-47AC52434D1F&type=6"
+REGISTER_URL = "https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18&type=6"
 FIXED_SEGMENT_COUNT = 2
 FIXED_SIMPLIFIED = False
 DEFAULT_MATERIAL_LENGTH = 12000

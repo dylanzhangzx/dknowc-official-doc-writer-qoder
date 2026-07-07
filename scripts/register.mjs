@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DEFAULT_BASE = "https://platform.dknowc.cn/auth/home/userAuto";
-const DEFAULT_CHANNEL = "2787E171-B0E5-4328-9946-47AC52434D1F";
+const DEFAULT_CHANNEL = "5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18";
 const DEFAULT_TYPE = "6";
 const FALLBACK_REGISTER_URL = `https://platform.dknowc.cn/auth/#/register?channel=${DEFAULT_CHANNEL}&type=${DEFAULT_TYPE}`;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
