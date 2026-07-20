@@ -34,7 +34,6 @@ CONFIG_FILE = SKILL_ROOT / "config.ini"
 DEFAULT_BASE_URL = "https://open.dknowc.cn/dependable/search/"
 SEARCH_RESULTS_DIR = SKILL_ROOT / "official-docs" / "search-results"
 CONFIG_HELP_URL = "https://platform.dknowc.cn/"
-REGISTER_URL = "https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18&type=6"
 FIXED_SEGMENT_COUNT = 2
 FIXED_SIMPLIFIED = False
 DEFAULT_MATERIAL_LENGTH = 12000
@@ -129,9 +128,56 @@ def normalize_material_length(material_length: Optional[int]) -> int:
     return material_length
 
 
+def extract_knowledge_base_url(api_response: dict) -> str:
+    """
+    从深知搜索返回中提取知识专库链接。
+
+    新接口中 knowledgeBase 位于 content.knowledgeBase，不在 content.data 内。
+    为兼容不同 Agent 的读取习惯，脚本会在输出阶段把该链接冗余写入多个稳定字段。
+    """
+    content = api_response.get("content", {})
+    if not isinstance(content, dict):
+        return ""
+    candidates = [
+        content.get("knowledgeBase", ""),
+        api_response.get("knowledgeBase", ""),
+    ]
+    data = content.get("data", {})
+    if isinstance(data, dict):
+        candidates.append(data.get("knowledgeBase", ""))
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return ""
+
+
+def attach_knowledge_base_aliases(result: dict, knowledge_base_url: str) -> dict:
+    """把知识专库链接写入多个稳定位置，降低 Agent 找不到链接的概率。"""
+    if not knowledge_base_url:
+        return result
+
+    result["knowledgeBase"] = knowledge_base_url
+    result["knowledgeBasePath"] = "content.knowledgeBase"
+    result["knowledgeBase_note"] = "知识专库链接来自深知搜索接口返回的 content.knowledgeBase；脚本已冗余复制到顶层 knowledgeBase。"
+
+    search_meta = result.get("search_meta")
+    if isinstance(search_meta, dict):
+        search_meta["knowledgeBase"] = knowledge_base_url
+
+    content = result.get("content")
+    if isinstance(content, dict):
+        content["knowledgeBase"] = knowledge_base_url
+        data = content.get("data")
+        if isinstance(data, dict):
+            data["knowledgeBase"] = knowledge_base_url
+            data["knowledgeBase_note"] = "兼容字段：原始链接位于 content.knowledgeBase。"
+
+    return result
+
+
 def load_config(config_path: Optional[Path] = None) -> dict:
     """
-    从本 Skill 根目录下的 config.ini 加载 API Key。搜索接口地址固定为 DEFAULT_BASE_URL，不从配置读取。
+    从配置文件加载 API Key。搜索接口地址固定为 DEFAULT_BASE_URL，不从配置读取。
 
     配置文件格式 (config.ini):
     [dkag]
@@ -142,9 +188,9 @@ def load_config(config_path: Optional[Path] = None) -> dict:
     if not config_path.exists():
         raise FileNotFoundError(
             f"配置文件不存在: {config_path}\n"
-            f"请先使用 scripts/register.mjs 通过手机号和验证码注册并自动写入 config.ini，或通过本渠道链接手动注册：\n"
-            f"  {REGISTER_URL}\n"
-            f"config.ini 不应被上传、打包或公开分享。"
+            f"请创建配置文件并添加你的 API Key:\n"
+            f"  [dkag]\n"
+            f"  api_key=your_api_key_here"
         )
 
     api_key = ''
@@ -162,7 +208,7 @@ def load_config(config_path: Optional[Path] = None) -> dict:
 
     if not api_key:
         raise ValueError(
-            "API Key 为空，请先运行 scripts/register.mjs 用手机号和验证码注册并自动写入 config.ini。"
+            "API Key 为空，请在 config.ini 中设置有效的 api_key。"
         )
     
     return {
@@ -200,8 +246,8 @@ def clean_dkag_response(api_response: dict) -> dict:
             
         articles = real_data.get("检索文章", [])
         
-        # 提取 knowledgeBase 链接
-        knowledge_base_url = inner_content.get("knowledgeBase", "")
+        # 提取 knowledgeBase 链接。新接口中该字段在 content.knowledgeBase，不在 content.data 内。
+        knowledge_base_url = extract_knowledge_base_url(api_response)
 
         if not articles:
             return {
@@ -279,6 +325,8 @@ def clean_dkag_response(api_response: dict) -> dict:
             "total_articles": len(cleaned_articles),
             "total_paragraphs": global_id_counter - 1,
             "knowledgeBase": knowledge_base_url,
+            "knowledgeBasePath": "content.knowledgeBase",
+            "knowledgeBase_note": "知识专库链接来自深知搜索接口返回的 content.knowledgeBase；脚本已冗余复制到顶层 knowledgeBase。",
             "policyFiles": policy_files
         }
 
@@ -295,6 +343,7 @@ def dkag_search(
     query: str,
     area: Optional[str] = None,
     time: Optional[str] = None,
+    purpose: Optional[str] = None,
     api_key: Optional[str] = None,
     config_path: Optional[Path] = None,
     clean: bool = False,
@@ -318,7 +367,8 @@ def dkag_search(
         area: 用户所属地域（可选，默认"中国"），如"广东省"、"北京市"
         time: 生效日期（可选），如"2026年"、"2025年08月"、"2025年08月15日"。
               不建议传"2023-2025"这类范围，脚本会自动忽略。
-        api_key: API 密钥（可选，如不传则从 config.ini 读取）
+        purpose: 搜索方案中的搜索目的，用于素材来源说明中的知识专库链接显示名。
+        api_key: API 密钥（可选，如不传则从配置文件读取）
         config_path: 配置文件路径（可选）
         clean: 是否对返回结果进行数据清洗（默认 False）
         policy: 是否返回规范性文件清单policyFiles（默认 False）
@@ -398,6 +448,7 @@ def dkag_search(
 
     search_meta = {
         "query": query,
+        "purpose": (purpose or "").strip(),
         "area": area or "",
         "time": normalized_time or "",
         "requested_time": time or "",
@@ -439,12 +490,16 @@ def dkag_search(
                 "search_meta": search_meta
             }
 
+        knowledge_base_url = extract_knowledge_base_url(result)
+
         # 如果需要清洗数据
         if clean:
             cleaned_result = clean_dkag_response(result)
             cleaned_result["search_meta"] = search_meta
+            attach_knowledge_base_aliases(cleaned_result, knowledge_base_url or cleaned_result.get("knowledgeBase", ""))
             return cleaned_result
         result["search_meta"] = search_meta
+        attach_knowledge_base_aliases(result, knowledge_base_url)
         return result
     except requests.exceptions.RequestException as e:
         return {
@@ -472,7 +527,8 @@ def main():
     parser.add_argument("query", help="搜索关键词（支持完整句子）")
     parser.add_argument("--area", help="用户所属地域（默认: 中国），如: 广东省、北京市")
     parser.add_argument("--time", help="生效日期范围，如: 2026年、2025年08月、2025年08月15日")
-    parser.add_argument("--api-key", help="API 密钥（可选，默认从 config.ini 读取）")
+    parser.add_argument("--purpose", help="搜索方案中的搜索目的，用于知识专库链接外显文字（内部字段，不向用户展示）")
+    parser.add_argument("--api-key", help="API 密钥（可选，默认从配置文件读取）")
     parser.add_argument("--config", help=f"配置文件路径（默认: {CONFIG_FILE}）")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
     parser.add_argument("--clean", action="store_true", help="对返回结果进行数据清洗（去除HTML转义、网页干扰词等）")
@@ -504,6 +560,7 @@ def main():
             query=args.query,
             area=args.area,
             time=args.time,
+            purpose=args.purpose,
             api_key=args.api_key,
             config_path=Path(args.config) if args.config else None,
             clean=args.clean,
@@ -518,8 +575,7 @@ def main():
             "error": True,
             "message": str(exc),
             "config_help_url": CONFIG_HELP_URL,
-            "register_url": REGISTER_URL,
-            "hint": "请先运行 scripts/register.mjs，用手机号和验证码注册并自动写入 config.ini，完成后再重新执行搜索。"
+            "hint": "请先配置 config.ini 中的 api_key，完成后再重新执行搜索。"
         }
 
     # 输出结果

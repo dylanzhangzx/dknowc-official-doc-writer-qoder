@@ -1,6 +1,6 @@
 # 深知写作助手（Qoder Public 版）
 
-这是深知写作助手的 Qoder 分发版本，以 ClawHub Public `3.1.0` 为功能基准，但作为独立渠道维护和打包。本版本不内置深知搜索 API Key；首次调用本 Skill 时，无论当前任务是否需要搜索，都先由 Agent 通过 MaaS 注册接口完成手机号注册、验证码确认、API Key 获取和本地配置写入，用户只需提供手机号和收到的验证码。
+这是深知写作助手的 Qoder 分发版本。功能逻辑与主干完整版保持一致，但不内置深知搜索 API Key；首次调用本 Skill 时，无论当前任务是否需要搜索，都先由 Agent 通过 MaaS 注册接口完成手机号注册、验证码确认、API Key 获取和本地配置写入，用户只需提供手机号和收到的验证码。
 
 ## Qoder 安装
 
@@ -19,6 +19,8 @@
 - 任务路由：`reference/task_router.md` 定义简单任务、常规任务、复杂任务和高风险任务的处理方式。
 - 质量审查：`reference/review_checklist.md` 定义公文内容、素材来源、文种专项和 Word 输出检查项。
 - Word 排版：通过 `scripts/format_document.py` 生成普通格式 `.docx`。
+- 表格排版：支持标准 Markdown 表格、宽表横向 A4、表题兜底和基础对齐规则。
+- 素材来源说明：执行过搜索时，通过 `scripts/source_note_html.py` 生成独立 HTML 溯源页。
 - 红头文件：通过 `scripts/template_generator.py` 代码化生成红头和表尾，不依赖 `templates/` 中的 Word 模板。
 
 ## 依赖
@@ -42,7 +44,7 @@ Qoder Public 版的初始化与具体任务无关：只要调用本 Skill 且本
 Qoder Public 版默认使用：
 
 - 接入点 `type=6`，即深知可信搜索。
-- Qoder Public 专属渠道码 `5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18`。
+- 渠道码 `5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18`。
 - 本地 `config.ini` 保存搜索 Key，由 Agent 自动创建，公开包不携带该文件。
 
 第 1 步，发送短信验证码：
@@ -77,14 +79,14 @@ https://open.dknowc.cn/dependable/search/
 
 ## 版本说明
 
-当前 Qoder Public 版版本为 `3.1.0`，功能和内容基准为 ClawHub Public `3.1.0`。
+当前 Qoder Public 版基于 `3.1.1`。
 
 ## 常用测试
 
 语法检查：
 
 ```bash
-python3 -m py_compile scripts/dkag_search.py scripts/merge_search_results.py scripts/format_document.py scripts/template_generator.py scripts/initialize.py scripts/check_release.py
+python3 -m py_compile scripts/dkag_search.py scripts/merge_search_results.py scripts/format_document.py scripts/template_generator.py scripts/initialize.py scripts/check_release.py scripts/source_note_html.py
 node --check scripts/register.mjs
 ```
 
@@ -112,12 +114,18 @@ python3 scripts/dkag_search.py "人才服务政策" --area 某省 --clean --outp
 python3 scripts/merge_search_results.py result_gd.json result_bj.json --output merged.json
 ```
 
-## Public 版说明与社区提交待办
+素材来源说明 HTML：
+
+```bash
+python3 scripts/source_note_html.py official-docs/input/source-note.json --output source-note.html
+```
+
+## Public 版说明
 
 - 本版本不内置 API Key。
 - 用户可通过 Agent 调用 `scripts/register.mjs`，用手机号和验证码注册 MaaS 账号并获取深知可信搜索 API Key。
 - 注册成功后，Agent 自动把 API Key 写入本地 `config.ini`，用户不需要查看或手动配置 Key。
-- 深知搜索、素材分类、Word 生成、异常处理等功能逻辑与自用版一致。
+- 深知搜索、素材分类、素材来源 HTML、Word 生成、异常处理等功能逻辑与主干完整版一致。
 - 如搜索失败或提示 API Key 未配置，请重新执行注册流程或检查本地 `config.ini` 是否存在且有效。
 - Qoder Public 版使用独立渠道码和专属注册链接。
 - Qoder 社区发布方式：Fork `Qoder-AI/qoder-community`，在 `src/content/skills-zh/dknowc-official-doc-writer.md` 新增 Agent Skill 条目，按社区贡献指南提交 Pull Request。

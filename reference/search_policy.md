@@ -53,30 +53,6 @@ python3 scripts/dkag_search.py "搜索词" --area 地域 --clean --output result
 
 如果深知搜索异常、空结果或素材不足，必须先暂停并请用户选择下一步，不得自行切换到 Web Search/Web Fetch。
 
-## Public 版 Key 缺失兜底
-
-Qoder Public 渠道版应在 Skill 启动初始化阶段完成 `config.ini` 注册配置，不以“是否需要搜索”作为注册触发条件。
-
-如果进入搜索阶段时仍发现 `config.ini` 缺失或 API Key 无效，必须暂停搜索并回到启动初始化流程。用户只需要提供手机号和收到的短信验证码；注册、获取 Key 和写入 `config.ini` 由 Agent 调用内置注册脚本完成：
-
-```bash
-node scripts/register.mjs send --phone <手机号>
-```
-
-发送成功后等待用户提供短信验证码，再执行：
-
-```bash
-node scripts/register.mjs register --phone <手机号> --vcode <验证码> --organ 个人 --name 用户
-```
-
-脚本固定使用 `type=6`（深知可信搜索）和 Qoder Public 专属渠道码 `5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18`。注册成功后，脚本自动将 API Key 写入本地 `config.ini`，标准输出不返回完整 Key。不得要求用户手动复制 Key 或手动编辑配置文件。写入成功前，不得执行深知搜索，不得自动改用 Web Search/Web Fetch。
-
-如果自动注册失败或用户选择手动注册，给出 Qoder Public 版当前注册链接：
-
-```text
-https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5EA39B18&type=6
-```
-
 ## Query 生成原则
 
 - 使用自然语言完整句子，避免关键词堆砌。
@@ -91,8 +67,10 @@ https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5
 
 - 搜索地域：使用用户任务对应的国家、省或市，不预设具体地区。
 - 搜索内容：每条 query 的目的和关键词。
-- 素材类型：政策依据型、数据支撑型、参考案例型，并说明对应的深知搜索参数。
+- 素材类型：政策依据型、数据支撑型、参考案例型。
 - 使用边界：哪些材料可作为政策依据，哪些只能作为案例或表述参考。
+
+用户可见的搜索方案不得展示脚本参数、命令或输出文件名。不得出现 `--area`、`--search-type`、`--policy`、`--search-channel`、`--clean`、`--output` 等参数，也不得设置“参数”列或“参数：...”字段。参数选择属于内部执行细节，用户确认搜索方向和范围后，由 Agent 按本文件规则自行映射为深知搜索脚本调用。
 
 不要为“表述参考型”单独设计 query 或单独搜索。表述参考来自政策依据、数据支撑、参考案例等已召回材料中的行文方式、结构和措辞，只能作为写作表达参考，不列入独立检索计划。
 
@@ -103,6 +81,8 @@ https://platform.dknowc.cn/auth/#/register?channel=5DBF147C-A4D0-4C3E-AB1A-6C6F5
 ```
 
 用户确认后再执行深知搜索脚本；用户调整后，按调整后的方案执行。不得在确认后改用 Web Search/Web Fetch。
+
+执行搜索时必须保留用户确认方案中的“搜索目的”。内部调用 `scripts/dkag_search.py` 时，将该搜索项的搜索目的传入 `--purpose`，脚本会写入 `search_meta.purpose`。`--purpose` 属于内部执行参数，不得出现在用户可见搜索方案中。
 
 ## 搜索异常处理
 
@@ -270,7 +250,7 @@ python3 scripts/dkag_search.py "搜索词" --area 地域 --search-type affair --
 执行过搜索时，正式公文 Word 与素材溯源分开交付：
 
 - 正式公文 Word：只包含用户要求的公文正文、必要附件、落款、版记和固定 AI 生成提示；不得内嵌 `【素材使用情况】`、`【知识专库链接】` 或知识专库 URL。
-- 素材来源说明：单独生成 `标题_素材来源说明.docx`，包含写作素材清单、参考范文清单、知识专库链接和需人工核验信息。只有用户明确要求纯文本或 Markdown 时，才可改为 `.md`。
+- 素材来源说明：单独生成 `标题_素材来源说明.html`，首页先放知识专库链接，再放素材使用情况和需人工核验信息。素材使用情况必须按正文位置、支撑内容和材料来源组织成溯源卡片，体现可核验、可追溯价值。素材来源说明固定为 HTML，不生成 Word 版。
 
 具体格式见 `reference/search_guide.md`。
 
@@ -283,7 +263,11 @@ python3 scripts/dkag_search.py "搜索词" --area 地域 --search-type affair --
 
 知识专库链接要求：
 
-- 必须从每个原始搜索结果 JSON 的 `knowledgeBase` 字段逐条复制到素材来源说明文件。
+- 素材来源说明中，`【知识专库链接】` 必须放在 `【素材使用情况】` 前面，并用简短说明告诉用户：这些链接可用于回看本次召回材料、核验来源出处和追溯正文依据。
+- 知识专库链接的外显文字优先使用对应搜索结果 JSON 的 `search_meta.purpose`，也就是用户确认搜索方案中的“搜索目的”。一次搜索对应一个知识专库链接，链接标签应与该次搜索目的一致，如“深圳AI产业与智慧城市总体政策（点击打开）”。
+- 深知搜索接口原始返回中，知识专库链接位于 `content.knowledgeBase`，不在 `content.data` 内。为兼容不同 Agent 的读取习惯，`scripts/dkag_search.py` 会同时把该链接冗余写入顶层 `knowledgeBase`、`search_meta.knowledgeBase` 和非清洗结果的 `content.data.knowledgeBase`。
+- 制作素材来源说明时，优先读取搜索结果 JSON 顶层 `knowledgeBase`；如果顶层缺失，再读取 `content.knowledgeBase`；仍缺失时再检查 `search_meta.knowledgeBase`。
+- 必须从每个原始搜索结果 JSON 的 `knowledgeBase` 或 `content.knowledgeBase` 字段逐条复制到素材来源说明文件。
 - 不得手写、猜测、改写或混用其他搜索产生的链接。
 - 合并文件只用于读取文章材料；如合并文件没有保留 `knowledgeBase`，必须回到原始搜索结果文件读取。
 - 如果某个关键搜索结果缺少 `knowledgeBase`，按搜索异常处理规则向用户确认下一步。

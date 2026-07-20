@@ -56,7 +56,6 @@ def check_environment():
     return {
         "python": platform.python_version(),
         "python_docx": shutil.which("python3") is not None and _module_available("docx"),
-        "node": shutil.which("node") is not None,
         "config_ini": (SKILL_ROOT / "config.ini").exists(),
         "fonts": fonts,
     }

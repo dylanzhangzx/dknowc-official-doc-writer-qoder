@@ -19,6 +19,8 @@ from pathlib import Path
 
 import docx
 import docx.opc.constants
+from docx.enum.section import WD_ORIENT, WD_SECTION
+from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_BREAK
 from docx.shared import Pt, Cm, Mm, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
@@ -80,17 +82,51 @@ def sanitize_url(raw_url):
     return url.strip().rstrip('，。、；;,.')
 
 
-def hyperlink_display_text(label=None):
+def hyperlink_display_text(label=None, fallback_index=None):
     """生成知识专库链接的可见文本。"""
-    clean_label = (label or "").strip().rstrip('：:')
+    clean_label = normalize_kb_label(label)
     if not clean_label:
-        clean_label = "知识专库链接"
+        clean_label = f"知识专库链接{fallback_index}" if fallback_index else "知识专库链接"
     return f"{clean_label}（点击打开）"
+
+
+def normalize_kb_label(label):
+    """清洗知识专库链接标签，去掉编号、Markdown 强调和已写入的点击提示。"""
+    clean_label = (label or "").strip()
+    clean_label = re.sub(r'^\s*\d+[\.、]\s*', '', clean_label)
+    clean_label = re.sub(r'^\s*[-*]\s*', '', clean_label)
+    clean_label = re.sub(r'[*_`]+', '', clean_label)
+    clean_label = re.sub(r'[（(]\s*点击打开\s*[）)]', '', clean_label)
+    clean_label = clean_label.replace('点击打开', '')
+    clean_label = re.sub(r'\s+', ' ', clean_label)
+    return clean_label.strip().rstrip('：:')
 
 
 def is_internal_search_endpoint(url):
     """识别深知搜索接口地址，避免误当成知识专库链接输出。"""
     return "open.dknowc.cn/dependable/search" in url
+
+
+def is_generic_kb_label(text):
+    """识别不能作为知识专库链接显示名的泛化说明。"""
+    clean_text = (text or "").strip().rstrip('：:')
+    if not clean_text:
+        return True
+    generic_patterns = (
+        r'^以下.*知识专库链接.*',
+        r'^本次.*知识专库.*',
+        r'^知识专库链接$',
+        r'^链接$',
+        r'^来源链接$',
+        r'^可点击链接$',
+    )
+    return any(re.match(pattern, clean_text) for pattern in generic_patterns)
+
+
+def is_useless_kb_label_line(text):
+    """识别知识专库链接区中可直接丢弃的无意义标签行。"""
+    clean_text = (text or "").strip().rstrip('：:')
+    return clean_text in {"知识专库链接", "链接", "来源链接", "可点击链接"}
 
 DEFAULT_OUTPUT_DIR = "official-docs/output"
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config', 'format.json')
@@ -317,6 +353,8 @@ def sanitize_filename_component(text: str, max_length: int = 80) -> str:
 try:
     from docx import Document
     from docx.shared import Pt, Cm, Mm, RGBColor
+    from docx.enum.section import WD_ORIENT, WD_SECTION
+    from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
     from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_LINE_SPACING
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
@@ -862,9 +900,13 @@ def fix_reference_format(content_text: str) -> str:
     return content_text
 
 
+LANDSCAPE_TABLE_MARKER = "<!-- landscape-table -->"
+WIDE_TABLE_COLUMN_THRESHOLD = 6
+
+
 def parse_markdown_table(lines, start_idx):
     """
-    从指定行开始解析Markdown表格，返回 (table_rows, next_idx)。
+    从指定行开始解析Markdown表格，返回 (table_rows, alignments, next_idx)。
     
     支持格式：
     | 列1 | 列2 | 列3 |
@@ -873,15 +915,16 @@ def parse_markdown_table(lines, start_idx):
     
     Returns:
         list[list[str]]: 解析后的单元格内容（不含分隔行）
+        list[str|None]: Markdown 分隔行中提取的列对齐方式
         int: 表格结束后的下一行索引；若start_idx不是表格行则返回 ([], start_idx)
     """
     if start_idx >= len(lines):
-        return [], start_idx
+        return [], [], start_idx
     
     stripped = lines[start_idx].strip()
     # 表格行必须以 | 开头（可选前导空格）
     if not stripped.startswith('|'):
-        return [], start_idx
+        return [], [], start_idx
     
     def split_table_row(line):
         """拆分表格行，去掉首尾 | 并分割"""
@@ -899,15 +942,32 @@ def parse_markdown_table(lines, start_idx):
             return False
         cells = split_table_row(s)
         return all(re.match(r'^[-:]+$', c) for c in cells)
+
+    def parse_alignments(separator_line):
+        alignments = []
+        for cell in split_table_row(separator_line):
+            left = cell.startswith(':')
+            right = cell.endswith(':')
+            if left and right:
+                alignments.append('center')
+            elif right:
+                alignments.append('right')
+            elif left:
+                alignments.append('left')
+            else:
+                alignments.append(None)
+        return alignments
     
     rows = []
+    alignments = []
     i = start_idx
     while i < len(lines):
         stripped = lines[i].strip()
         if not stripped.startswith('|'):
             break
         if is_separator(stripped):
-            # 分隔行：记录但不加入数据行（已跳过）
+            if not alignments:
+                alignments = parse_alignments(stripped)
             i += 1
             continue
         rows.append(split_table_row(stripped))
@@ -915,12 +975,230 @@ def parse_markdown_table(lines, start_idx):
     
     # 至少要有2行（标题行 + 数据行）才算有效表格
     if len(rows) < 2:
-        return [], start_idx
+        return [], [], start_idx
     
-    return rows, i
+    return rows, alignments, i
 
 
-def add_word_table(doc, table_rows, body_font, body_size):
+def section_usable_width_dxa(section):
+    """获取当前 section 可用正文宽度，单位 DXA/twips。"""
+    return int(section.page_width.twips - section.left_margin.twips - section.right_margin.twips)
+
+
+def configure_section(section, landscape=False):
+    """按公文版心配置 section，支持横向 A4 宽表页。"""
+    page_width_mm, page_height_mm = get_page_size()
+    margin_top, margin_bottom, margin_left, margin_right = get_page_margin()
+    if landscape:
+        section.orientation = WD_ORIENT.LANDSCAPE
+        section.page_width = Mm(page_height_mm)
+        section.page_height = Mm(page_width_mm)
+    else:
+        section.orientation = WD_ORIENT.PORTRAIT
+        section.page_width = Mm(page_width_mm)
+        section.page_height = Mm(page_height_mm)
+    section.top_margin = Cm(margin_top / 10)
+    section.bottom_margin = Cm(margin_bottom / 10)
+    section.left_margin = Cm(margin_left / 10)
+    section.right_margin = Cm(margin_right / 10)
+
+
+def add_landscape_section(doc):
+    """新增横向 A4 section，并设置国标页码。"""
+    section = doc.add_section(WD_SECTION.NEW_PAGE)
+    configure_section(section, landscape=True)
+    add_gbt_page_numbers(doc, section)
+    return section
+
+
+def add_portrait_section(doc):
+    """宽表结束后恢复竖向 A4 section。"""
+    section = doc.add_section(WD_SECTION.NEW_PAGE)
+    configure_section(section, landscape=False)
+    add_gbt_page_numbers(doc, section)
+    return section
+
+
+def set_table_width(table, width_dxa):
+    tbl_pr = table._tbl.tblPr
+    tbl_w = tbl_pr.find(qn('w:tblW'))
+    if tbl_w is None:
+        tbl_w = OxmlElement('w:tblW')
+        tbl_pr.append(tbl_w)
+    tbl_w.set(qn('w:type'), 'dxa')
+    tbl_w.set(qn('w:w'), str(width_dxa))
+
+
+def set_table_cell_margins(table, top=80, start=120, bottom=80, end=120):
+    tbl_pr = table._tbl.tblPr
+    tbl_cell_mar = tbl_pr.find(qn('w:tblCellMar'))
+    if tbl_cell_mar is None:
+        tbl_cell_mar = OxmlElement('w:tblCellMar')
+        tbl_pr.append(tbl_cell_mar)
+    for margin_name, value in {
+        'top': top,
+        'start': start,
+        'bottom': bottom,
+        'end': end,
+    }.items():
+        node = tbl_cell_mar.find(qn(f'w:{margin_name}'))
+        if node is None:
+            node = OxmlElement(f'w:{margin_name}')
+            tbl_cell_mar.append(node)
+        node.set(qn('w:w'), str(value))
+        node.set(qn('w:type'), 'dxa')
+
+
+def set_table_grid(table, col_widths):
+    tbl_grid = table._tbl.tblGrid
+    if tbl_grid is None:
+        tbl_grid = OxmlElement('w:tblGrid')
+        table._tbl.insert(1, tbl_grid)
+    for child in list(tbl_grid):
+        tbl_grid.remove(child)
+    for width in col_widths:
+        grid_col = OxmlElement('w:gridCol')
+        grid_col.set(qn('w:w'), str(width))
+        tbl_grid.append(grid_col)
+
+
+def set_cell_width(cell, width_dxa):
+    tc_pr = cell._tc.get_or_add_tcPr()
+    tc_w = tc_pr.find(qn('w:tcW'))
+    if tc_w is None:
+        tc_w = OxmlElement('w:tcW')
+        tc_pr.append(tc_w)
+    tc_w.set(qn('w:w'), str(width_dxa))
+    tc_w.set(qn('w:type'), 'dxa')
+
+
+def set_row_cant_split(row):
+    """尽量禁止 Word 将同一表格行拆到两页。"""
+    tr_pr = row._tr.get_or_add_trPr()
+    cant_split = tr_pr.find(qn('w:cantSplit'))
+    if cant_split is None:
+        cant_split = OxmlElement('w:cantSplit')
+        tr_pr.append(cant_split)
+
+
+def set_table_rows_cant_split(table):
+    """尽量保证同一单元格内容不跨页拆分。"""
+    for row in table.rows:
+        set_row_cant_split(row)
+
+
+def set_paragraph_keep_with_next(paragraph, keep=True):
+    """让表题尽量和后续表格留在同一页。"""
+    paragraph.paragraph_format.keep_with_next = keep
+
+
+def text_width_score(text):
+    """估算单元格内容宽度；中文按 2，ASCII 按 1。"""
+    score = 0
+    for char in str(text):
+        score += 1 if ord(char) < 128 else 2
+    return score
+
+
+def compute_column_widths(table_rows, usable_width_dxa):
+    num_cols = max(len(row) for row in table_rows)
+    scores = []
+    for col_idx in range(num_cols):
+        values = [row[col_idx] if col_idx < len(row) else '' for row in table_rows]
+        max_score = max(text_width_score(value) for value in values) if values else 4
+        avg_score = sum(text_width_score(value) for value in values) / max(len(values), 1)
+        scores.append(max(6, min(28, max_score * 0.65 + avg_score * 0.35)))
+
+    total_score = sum(scores) or num_cols
+    min_width = 900 if num_cols <= 6 else 700
+    widths = [max(min_width, int(usable_width_dxa * score / total_score)) for score in scores]
+    total_width = sum(widths)
+    if total_width != usable_width_dxa and total_width > 0:
+        widths[-1] += usable_width_dxa - total_width
+    return widths
+
+
+def infer_column_alignment(table_rows, alignments, col_idx):
+    if col_idx < len(alignments) and alignments[col_idx]:
+        return alignments[col_idx]
+
+    values = [row[col_idx].strip() for row in table_rows[1:] if col_idx < len(row) and row[col_idx].strip()]
+    if values and all(re.match(r'^[+-]?\d+(?:\.\d+)?%?$|^[\d,，.]+$', value) for value in values):
+        return 'right'
+    if values and max(text_width_score(value) for value in values) <= 12:
+        return 'center'
+    return 'left'
+
+
+def alignment_to_word(alignment):
+    return {
+        'center': WD_ALIGN_PARAGRAPH.CENTER,
+        'right': WD_ALIGN_PARAGRAPH.RIGHT,
+        'left': WD_ALIGN_PARAGRAPH.LEFT,
+    }.get(alignment, WD_ALIGN_PARAGRAPH.LEFT)
+
+
+def should_use_landscape_table(table_rows, forced_landscape=False):
+    if forced_landscape:
+        return True
+    num_cols = max(len(row) for row in table_rows)
+    return num_cols > WIDE_TABLE_COLUMN_THRESHOLD
+
+
+def is_table_caption(text):
+    """识别表题，如“表1 五省粮食产量对比”。"""
+    return bool(re.match(r'^表\s*\d+\s+.+', text.strip()))
+
+
+def delete_paragraph(paragraph):
+    """从文档中删除指定段落。"""
+    p = paragraph._element
+    p.getparent().remove(p)
+    paragraph._p = paragraph._element = None
+
+
+def pop_trailing_table_caption(doc):
+    """
+    如果文档末尾最近一个可见段落是表题，则移除并返回其文本。
+    用于宽表自动横排时，把已写入竖版页的表题移入横版页。
+    """
+    for paragraph in reversed(doc.paragraphs):
+        text = paragraph.text.strip()
+        if not text:
+            continue
+        if is_table_caption(text):
+            delete_paragraph(paragraph)
+            return text
+        return None
+    return None
+
+
+def add_table_caption(doc, caption, body_font, body_size):
+    """添加表题。表题是普通文字，不设置大纲级别。"""
+    if not caption:
+        return
+    para = doc.add_paragraph()
+    add_formatted_text(para, caption, body_font, body_size)
+    set_paragraph_format(para, first_line_indent=False, alignment=WD_ALIGN_PARAGRAPH.CENTER, line_spacing=body_size + 12)
+    set_paragraph_keep_with_next(para)
+
+
+def next_table_number(doc):
+    """根据已写入文档的表题计算下一个表格编号。"""
+    numbers = []
+    for paragraph in doc.paragraphs:
+        match = re.match(r'^表\s*(\d+)\s+.+', paragraph.text.strip())
+        if match:
+            numbers.append(int(match.group(1)))
+    return max(numbers, default=0) + 1
+
+
+def fallback_table_caption(doc):
+    """当模型漏写表题时生成兜底表题，避免无名表格进入正式 Word。"""
+    return f"表{next_table_number(doc)} 主要情况汇总"
+
+
+def add_word_table(doc, table_rows, alignments, body_font, body_size, landscape=False, caption=None):
     """
     将解析后的表格数据添加为Word原生表格。
     
@@ -932,24 +1210,58 @@ def add_word_table(doc, table_rows, body_font, body_size):
         table_rows: list[list[str]], 解析后的表格数据
         body_font: 正文字体名
         body_size: 正文字号(pt)
+        landscape: 是否为宽表单独使用横向 A4 页面
+        caption: 随表格一起写入的表题
     """
     num_cols = max(len(row) for row in table_rows)
+    table_font_size = 15 if landscape or num_cols > WIDE_TABLE_COLUMN_THRESHOLD else body_size
+
+    if landscape:
+        caption = caption or pop_trailing_table_caption(doc)
+        caption = caption or fallback_table_caption(doc)
+        add_landscape_section(doc)
+        add_table_caption(doc, caption, body_font, body_size)
+    else:
+        caption = caption or pop_trailing_table_caption(doc)
+        caption = caption or fallback_table_caption(doc)
+        add_table_caption(doc, caption, body_font, body_size)
     
     table = doc.add_table(rows=len(table_rows), cols=num_cols)
     table.style = 'Table Grid'
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
+    usable_width = section_usable_width_dxa(doc.sections[-1])
+    col_widths = compute_column_widths(table_rows, usable_width)
+    set_table_width(table, usable_width)
+    set_table_grid(table, col_widths)
+    set_table_cell_margins(table)
     
     for row_idx, row_data in enumerate(table_rows):
         for col_idx in range(num_cols):
             cell = table.rows[row_idx].cells[col_idx]
+            cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.CENTER
+            set_cell_width(cell, col_widths[col_idx])
             # 清空默认段落
             cell.paragraphs[0].clear()
             text = row_data[col_idx] if col_idx < len(row_data) else ''
-            add_formatted_text(cell.paragraphs[0], text, body_font, body_size, bold=(row_idx == 0))
-            set_paragraph_format(cell.paragraphs[0], first_line_indent=False, line_spacing=body_size + 12)
+            alignment = 'center' if row_idx == 0 else infer_column_alignment(table_rows, alignments, col_idx)
+            paragraph = cell.paragraphs[0]
+            paragraph.alignment = alignment_to_word(alignment)
+            add_formatted_text(paragraph, text, body_font, table_font_size, bold=(row_idx == 0))
+            set_paragraph_format(
+                paragraph,
+                first_line_indent=False,
+                alignment=alignment_to_word(alignment),
+                line_spacing=table_font_size + 6,
+            )
+    set_table_rows_cant_split(table)
     
     # 表格后加一个空段落，与后续内容保持间距
     spacer = doc.add_paragraph()
-    set_paragraph_format(spacer, first_line_indent=False, line_spacing=body_size + 12)
+    set_paragraph_format(spacer, first_line_indent=False, line_spacing=body_size + 8)
+
+    if landscape:
+        add_portrait_section(doc)
 
 
 def set_paragraph_mark_font(para, font_name, font_size):
@@ -1005,15 +1317,8 @@ def create_document(content_text, output_path=None):
     doc = Document()
     
     # 设置 A4 纸张和页边距（公文格式规范）
-    page_width_mm, page_height_mm = get_page_size()
-    margin_top, margin_bottom, margin_left, margin_right = get_page_margin()
     for section in doc.sections:
-        section.page_width = Mm(page_width_mm)
-        section.page_height = Mm(page_height_mm)
-        section.top_margin = Cm(margin_top / 10)
-        section.bottom_margin = Cm(margin_bottom / 10)
-        section.left_margin = Cm(margin_left / 10)
-        section.right_margin = Cm(margin_right / 10)
+        configure_section(section, landscape=False)
         add_gbt_page_numbers(doc, section)
     
     # 处理正文内容
@@ -1045,10 +1350,14 @@ def create_document(content_text, output_path=None):
     in_kb_section = False
     # 知识专库链接前一行标签，用于显示为“标题（点击打开）”
     pending_kb_label = None
+    kb_link_count = 0
     # 附件正文首页“附件”后的下一行作为附件标题处理
     awaiting_attachment_title = False
     # 正文末尾附件目录后，落款前需要固定空三行
     attachment_list_pending_sign_gap = False
+    # 表格前一行使用 <!-- landscape-table --> 时，强制下一张表横排。
+    force_next_table_landscape = False
+    pending_landscape_table_caption = None
 
     while i < line_count:
         line = lines[i]
@@ -1059,11 +1368,32 @@ def create_document(content_text, output_path=None):
             i += 1
             continue
 
+        if stripped == LANDSCAPE_TABLE_MARKER:
+            force_next_table_landscape = True
+            i += 1
+            continue
+
+        if force_next_table_landscape and is_table_caption(stripped):
+            pending_landscape_table_caption = stripped
+            i += 1
+            continue
+
         # Markdown表格检测（必须在其他判断之前）
         if stripped.startswith('|'):
-            table_rows, next_i = parse_markdown_table(lines, i)
+            table_rows, alignments, next_i = parse_markdown_table(lines, i)
             if table_rows:
-                add_word_table(doc, table_rows, body_font, body_size)
+                use_landscape = should_use_landscape_table(table_rows, force_next_table_landscape)
+                add_word_table(
+                    doc,
+                    table_rows,
+                    alignments,
+                    body_font,
+                    body_size,
+                    landscape=use_landscape,
+                    caption=pending_landscape_table_caption if use_landscape else None,
+                )
+                force_next_table_landscape = False
+                pending_landscape_table_caption = None
                 i = next_i
                 continue
             # 不是有效表格，当普通文本处理，继续往下走
@@ -1119,6 +1449,7 @@ def create_document(content_text, output_path=None):
             in_appendix_section = True
             in_kb_section = True
             pending_kb_label = None
+            kb_link_count = 0
             para = doc.add_paragraph()
             add_formatted_text(para, "【知识专库链接】", body_font, body_size)
             set_paragraph_format(para, first_line_indent=False, alignment=WD_ALIGN_PARAGRAPH.LEFT, line_spacing=body_line_spacing)
@@ -1143,6 +1474,7 @@ def create_document(content_text, output_path=None):
             in_appendix_section = True
             in_kb_section = True
             pending_kb_label = None
+            kb_link_count = 0
 
         # 附录区域：统一靠左排版；知识专库 URL 生成可点击蓝链。
         # 必须早于标题识别，避免“15. XXX”这类素材编号被误判为三级标题。
@@ -1154,11 +1486,12 @@ def create_document(content_text, output_path=None):
                     if is_internal_search_endpoint(url):
                         i += 1
                         continue
+                    kb_link_count += 1
                     para = doc.add_paragraph()
                     add_hyperlink(
                         para,
                         url,
-                        hyperlink_display_text(pending_kb_label),
+                        hyperlink_display_text(pending_kb_label, kb_link_count),
                         font_name=body_font,
                         font_size=body_size,
                     )
@@ -1169,9 +1502,12 @@ def create_document(content_text, output_path=None):
 
             para = doc.add_paragraph()
             clean_text = normalize_appendix_text(stripped)
+            if in_kb_section and is_useless_kb_label_line(clean_text):
+                i += 1
+                continue
             add_formatted_text(para, clean_text, body_font, body_size)
             set_paragraph_format(para, first_line_indent=False, alignment=WD_ALIGN_PARAGRAPH.LEFT, line_spacing=body_line_spacing)
-            if in_kb_section and clean_text and not clean_text.startswith("【"):
+            if in_kb_section and clean_text and not clean_text.startswith("【") and not is_generic_kb_label(clean_text):
                 pending_kb_label = clean_text
             i += 1
             continue

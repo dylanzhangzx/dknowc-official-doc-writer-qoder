@@ -104,6 +104,7 @@ def merge_results(result_files: List[str]) -> Dict:
         searches.append({
             "file": str(safe_file_path),
             "query": search_meta.get("query", ""),
+            "purpose": search_meta.get("purpose", ""),
             "area": region,
             "time": search_meta.get("time", ""),
             "policy": search_meta.get("policy", False),
@@ -115,6 +116,7 @@ def merge_results(result_files: List[str]) -> Dict:
             knowledge_bases.append({
                 "file": str(safe_file_path),
                 "query": search_meta.get("query", ""),
+                "purpose": search_meta.get("purpose", ""),
                 "area": region,
                 "knowledgeBase": data.get("knowledgeBase", ""),
             })
@@ -130,6 +132,8 @@ def merge_results(result_files: List[str]) -> Dict:
             article.setdefault("搜索地域", region)
             if search_meta.get("query"):
                 article.setdefault("搜索词", search_meta.get("query"))
+            if search_meta.get("purpose"):
+                article.setdefault("搜索目的", search_meta.get("purpose"))
             all_articles.append(article)
     
     # 重新编号段落
