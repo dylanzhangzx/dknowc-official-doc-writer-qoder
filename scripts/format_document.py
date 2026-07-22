@@ -1513,7 +1513,8 @@ def create_document(content_text, output_path=None):
             continue
 
         # 附件清单续行要先于三级标题识别，避免 “2.附件名” 被误判为三级标题。
-        if i > 0 and is_attachment_continuation(stripped):
+        # 仅在已识别到正文末尾“附件：”清单后生效，避免普通正文连续编号被误排为附件续行。
+        if attachment_list_pending_sign_gap and i > 0 and is_attachment_continuation(stripped):
             prev_non_empty = ""
             for prev_idx in range(i - 1, -1, -1):
                 prev_non_empty = lines[prev_idx].strip()

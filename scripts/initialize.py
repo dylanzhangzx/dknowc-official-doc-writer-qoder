@@ -7,12 +7,15 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
 SKILL_ROOT = Path(__file__).resolve().parent.parent
 PROFILE_PATH = SKILL_ROOT / "config" / "user_profile.json"
 FORMAT_PATH = SKILL_ROOT / "config" / "format.json"
+SCRIPTS_DIR = SKILL_ROOT / "scripts"
+sys.path.insert(0, str(SCRIPTS_DIR))
 
 
 def configured_fonts():

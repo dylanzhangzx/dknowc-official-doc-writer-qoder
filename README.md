@@ -22,6 +22,7 @@
 - 表格排版：支持标准 Markdown 表格、宽表横向 A4、表题兜底和基础对齐规则。
 - 素材来源说明：执行过搜索时，通过 `scripts/source_note_html.py` 生成独立 HTML 溯源页。
 - 红头文件：通过 `scripts/template_generator.py` 代码化生成红头和表尾，不依赖 `templates/` 中的 Word 模板。
+- PDF：当前 Qoder Public 版不支持自动生成 PDF；用户明确要求 PDF 时，交付 `.docx` 并建议用户使用本机 Word/WPS 另存或导出为 PDF。
 
 ## 依赖
 
@@ -34,6 +35,8 @@ pip3 install python-docx requests
 ```bash
 node --version
 ```
+
+当前版本不内置 PDF 生成或转换依赖。正式公文主交付物为 `.docx`；如用户需要 PDF，应使用 Word/WPS 打开 `.docx` 后另存或导出。
 
 ## 首次启动初始化
 
@@ -79,7 +82,7 @@ https://open.dknowc.cn/dependable/search/
 
 ## 版本说明
 
-当前 Qoder Public 版基于 `3.1.1`。
+当前 Qoder Public 版基于 `3.1.4`。
 
 ## 常用测试
 
@@ -125,7 +128,7 @@ python3 scripts/source_note_html.py official-docs/input/source-note.json --outpu
 - 本版本不内置 API Key。
 - 用户可通过 Agent 调用 `scripts/register.mjs`，用手机号和验证码注册 MaaS 账号并获取深知可信搜索 API Key。
 - 注册成功后，Agent 自动把 API Key 写入本地 `config.ini`，用户不需要查看或手动配置 Key。
-- 深知搜索、素材分类、素材来源 HTML、Word 生成、异常处理等功能逻辑与主干完整版一致。
+- 深知搜索、素材分类、素材来源 HTML、Word 生成、红头 Word、异常处理等功能逻辑与主干完整版一致。
 - 如搜索失败或提示 API Key 未配置，请重新执行注册流程或检查本地 `config.ini` 是否存在且有效。
 - Qoder Public 版使用独立渠道码和专属注册链接。
 - Qoder 社区发布方式：Fork `Qoder-AI/qoder-community`，在 `src/content/skills-zh/dknowc-official-doc-writer.md` 新增 Agent Skill 条目，按社区贡献指南提交 Pull Request。
